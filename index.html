@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="description" content="YU030X personal index - blog, mail and GitHub entries." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='9' fill='none' stroke='%238a8a86' stroke-width='2.5'/></svg>" />
+  <title>YU030X - Signal Chamber</title>
+  <script>
+    // Resolve the theme before first paint so the page never flashes the wrong one.
+    (() => {
+      let stored = null;
+
+      try {
+        stored = localStorage.getItem("yu030x-theme");
+      } catch (error) {
+        stored = null;
+      }
+
+      const prefersLight = window.matchMedia("(prefers-color-scheme: light)").matches;
+      document.documentElement.dataset.theme =
+        stored === "paper" || stored === "dark" ? stored : (prefersLight ? "paper" : "dark");
+    })();
+  </script>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <canvas id="field" aria-hidden="true"></canvas>
+  <div class="scanlines" aria-hidden="true"></div>
+  <div class="noise" aria-hidden="true"></div>
+
+  <main class="page" aria-label="YU030X personal index">
+    <header class="topbar">
+      <a class="back" href="index.html">(*´∀`)</a>
+
+      <div class="topbar-right">
+
+
+        <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to paper theme">
+          <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2.8V5.4M12 18.6V21.2M2.8 12H5.4M18.6 12H21.2M5.5 5.5L7.3 7.3M16.7 16.7L18.5 18.5M18.5 5.5L16.7 7.3M7.3 16.7L5.5 18.5" />
+          </svg>
+          <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
+            <path d="M20.4 13.6A8.4 8.4 0 0 1 10.4 3.6 8.4 8.4 0 1 0 20.4 13.6Z" />
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <section class="identity" aria-labelledby="name">
+      <h1 id="name">YU030X</h1>
+      <p class="motto" lang="zh">心之所向，素履以往</p>
+    </section>
+
+    <nav class="links" aria-label="Personal links">
+      <a class="nav-link" data-form="bars" href="https://blog.yu030x.top" target="_blank" rel="noopener"><span>Blog</span><small>Read</small></a>
+      <a class="nav-link" data-form="chevron" href="mailto:yu030x@gmail.com"><span>Mail</span><small>Send</small></a>
+      <a class="nav-link" data-form="fork" href="https://github.com/yu030x" target="_blank" rel="noopener"><span>GitHub</span><small>Code</small></a>
+    </nav>
+  </main>
+
+  <script src="./app.js" defer></script>
+</body>
+</html>

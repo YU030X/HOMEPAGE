@@ -1,0 +1,318 @@
+    /* Dark is the default set so the page still renders if the head script is blocked. */
+    :root {
+      color-scheme: dark;
+      --base: #050606;
+      --ink: #edede7;
+      --mid: #9a9d99;
+      --dim: #7f837f;
+      --line: rgba(237, 237, 231, 0.2);
+      --panel: rgba(5, 6, 6, 0.1);
+      --hover: rgba(237, 237, 231, 0.065);
+      --scanline: rgba(5, 6, 6, 0.46);
+      --scanline-opacity: 0.72;
+      --noise-a: rgba(255, 255, 255, 0.2);
+      --noise-b: rgba(255, 255, 255, 0.12);
+      --noise-opacity: 0.12;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+
+    /* Warm paper. Ink stays a deep grey rather than black to keep the print feel. */
+    :root[data-theme="paper"] {
+      color-scheme: light;
+      --base: #eae6dc;
+      --ink: #232421;
+      --mid: #4a4b47;
+      --dim: #5d5e58;
+      --line: rgba(35, 36, 33, 0.2);
+      /* Kept near zero on purpose: the dark panel fill resolves to the field colour and
+         is a no-op, so the corner brackets frame the links in both themes, not a plate. */
+      --panel: rgba(35, 36, 33, 0.015);
+      --hover: rgba(35, 36, 33, 0.055);
+      --scanline: rgba(35, 36, 33, 0.16);
+      --scanline-opacity: 0.5;
+      --noise-a: rgba(35, 36, 33, 0.22);
+      --noise-b: rgba(35, 36, 33, 0.14);
+      --noise-opacity: 0.16;
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      margin: 0;
+      min-width: 320px;
+      min-height: 100%;
+      background: var(--base);
+    }
+
+    body {
+      min-height: 100dvh;
+      overflow: hidden;
+      color: var(--ink);
+    }
+
+    canvas,
+    .scanlines,
+    .noise {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+    }
+
+    canvas { width: 100%; height: 100%; }
+
+    /* Below the content layer on purpose. Overlaying the type banded the name on the
+       dark theme while doing nothing on paper, where dark lines fall on dark ink. The
+       scanlines belong to the field, not to the text. */
+    .scanlines {
+      z-index: 2;
+      background: repeating-linear-gradient(to bottom, transparent 0 3px, var(--scanline) 3px 4px);
+      opacity: var(--scanline-opacity);
+    }
+
+    .noise {
+      z-index: 5;
+      background:
+        radial-gradient(circle at 18% 31%, var(--noise-a) 0 .45px, transparent .75px) 0 0 / 13px 17px,
+        radial-gradient(circle at 68% 74%, var(--noise-b) 0 .4px, transparent .72px) 0 0 / 19px 23px;
+      opacity: var(--noise-opacity);
+    }
+
+    .page {
+      position: relative;
+      z-index: 3;
+      display: grid;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      grid-template-rows: auto 1fr;
+      width: 100%;
+      min-height: 100dvh;
+      padding: 30px clamp(24px, 4vw, 64px) 36px;
+    }
+
+    .topbar {
+      grid-column: 1 / -1;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: var(--mid);
+      font-size: 10px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+    }
+
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .back {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .back:hover,
+    .back:focus-visible { color: var(--ink); }
+
+    .back:focus-visible,
+    .nav-link:focus-visible,
+    .theme-toggle:focus-visible {
+      outline: 2px solid var(--ink);
+      outline-offset: 4px;
+    }
+
+    .theme-toggle {
+      display: grid;
+      place-items: center;
+      width: 24px;
+      height: 24px;
+      margin: -4px 0;
+      padding: 0;
+      border: 0;
+      background: none;
+      color: var(--mid);
+      cursor: pointer;
+      transition: color 130ms steps(2, end);
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .theme-toggle:hover,
+    .theme-toggle:focus-visible { color: var(--ink); }
+
+    .theme-toggle:active { transform: translateY(1px); }
+
+    .theme-toggle svg {
+      display: block;
+      width: 15px;
+      height: 15px;
+    }
+
+    .theme-toggle .icon-moon { display: none; }
+
+    :root[data-theme="paper"] .theme-toggle .icon-sun { display: none; }
+    :root[data-theme="paper"] .theme-toggle .icon-moon { display: block; }
+
+    /* Shrink-wrapped to the name so the motto can hang off its bottom right corner
+       rather than off the column the name happens to sit in. */
+    .identity {
+      grid-column: 2 / span 5;
+      grid-row: 2;
+      align-self: center;
+      width: max-content;
+      max-width: 100%;
+      padding-bottom: 3vh;
+      -webkit-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(72px, 10vw, 156px);
+      font-weight: 650;
+      line-height: 0.84;
+      letter-spacing: -0.035em;
+      white-space: nowrap;
+      cursor: grab;
+      touch-action: none;
+    }
+
+    h1.is-dragging { cursor: grabbing; }
+
+    .motto {
+      margin: 18px 0 0;
+      color: var(--mid);
+      font-size: clamp(13px, 1.2vw, 16px);
+      line-height: 1.6;
+      text-align: right;
+    }
+
+    .identity-character {
+      display: inline-block;
+      will-change: transform;
+    }
+
+    .links {
+      grid-column: 9 / span 3;
+      grid-row: 2;
+      align-self: center;
+      display: grid;
+      padding: 10px 12px;
+      background:
+        linear-gradient(var(--ink), var(--ink)) left top / 25px 1px no-repeat,
+        linear-gradient(var(--ink), var(--ink)) left top / 1px 14px no-repeat,
+        linear-gradient(var(--ink), var(--ink)) right top / 25px 1px no-repeat,
+        linear-gradient(var(--ink), var(--ink)) right top / 1px 14px no-repeat,
+        linear-gradient(var(--ink), var(--ink)) left bottom / 25px 1px no-repeat,
+        linear-gradient(var(--ink), var(--ink)) left bottom / 1px 14px no-repeat,
+        linear-gradient(var(--ink), var(--ink)) right bottom / 25px 1px no-repeat,
+        linear-gradient(var(--ink), var(--ink)) right bottom / 1px 14px no-repeat,
+        var(--panel);
+    }
+
+    .nav-link {
+      position: relative;
+      display: grid;
+      grid-template-columns: 18px 1fr auto;
+      gap: 18px;
+      align-items: center;
+      min-height: 60px;
+      padding: 0 10px;
+      color: var(--mid);
+      text-decoration: none;
+      transition: color 130ms steps(2, end), background-color 130ms steps(2, end), transform 130ms steps(2, end);
+    }
+
+    .nav-link:not(:last-child)::after {
+      position: absolute;
+      right: 8px;
+      bottom: 0;
+      left: 8px;
+      height: 1px;
+      content: "";
+      background: linear-gradient(90deg, transparent, var(--line) 14%, var(--line) 86%, transparent);
+    }
+
+    .nav-link::before {
+      content: ">";
+      width: 0;
+      overflow: hidden;
+      color: var(--ink);
+      transition: width 130ms steps(2, end);
+    }
+
+    .nav-link span:first-child { grid-column: 2; }
+
+    .nav-link small {
+      grid-column: 3;
+      grid-row: 1;
+      color: var(--dim);
+      font-size: 9px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .nav-link:hover,
+    .nav-link:focus-visible {
+      color: var(--ink);
+      background: linear-gradient(90deg, var(--hover), transparent 78%);
+    }
+
+    .nav-link:hover::before,
+    .nav-link:focus-visible::before { width: 18px; }
+
+    .nav-link:active { transform: translateY(1px); }
+
+    @media (min-width: 761px) and (max-height: 640px) {
+      body { overflow: auto; }
+
+      .page { padding: 20px clamp(24px, 4vw, 64px) 24px; }
+      .identity { padding-bottom: 0; }
+
+      h1 { font-size: clamp(56px, 7.4vw, 104px); }
+
+      .motto { margin-top: 20px; }
+      .nav-link { min-height: 48px; }
+    }
+
+    @media (max-width: 760px) {
+      body { overflow: auto; }
+
+      .page {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr auto;
+        gap: 38px;
+        min-height: 100svh;
+        padding: 24px 22px 28px;
+      }
+
+      .topbar,
+      .identity,
+      .links { grid-column: 1; }
+
+      .topbar { grid-row: 1; }
+      .kaomoji { display: none; }
+      .identity { grid-row: 2; align-self: end; padding: 18vh 0 0; }
+
+      h1 {
+        font-size: clamp(76px, 25.5vw, 116px);
+        letter-spacing: -0.04em;
+      }
+
+      .motto { margin-top: 24px; }
+      .links { grid-row: 3; }
+      .nav-link { min-height: 56px; }
+
+      .theme-toggle {
+        width: 34px;
+        height: 34px;
+        margin: -9px -8px -9px 0;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .nav-link,
+      .nav-link::before,
+      .theme-toggle { transition: none; }
+      .identity-character { transform: none !important; }
+    }

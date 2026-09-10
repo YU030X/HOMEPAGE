@@ -221,6 +221,8 @@
       color: var(--mid);
       text-decoration: none;
       transition: color 130ms steps(2, end), background-color 130ms steps(2, end), transform 130ms steps(2, end);
+      /* Kill the grey flash iOS/Android paints on tap; :active below replaces it. */
+      -webkit-tap-highlight-color: transparent;
     }
 
     .nav-link:not(:last-child)::after {
@@ -261,7 +263,11 @@
     .nav-link:hover::before,
     .nav-link:focus-visible::before { width: 18px; }
 
-    .nav-link:active { transform: translateY(1px); }
+    .nav-link:active {
+      color: var(--ink);
+      background: linear-gradient(90deg, var(--hover), transparent 78%);
+      transform: translateY(1px);
+    }
 
     @media (min-width: 761px) and (max-height: 640px) {
       body { overflow: auto; }
@@ -276,14 +282,23 @@
     }
 
     @media (max-width: 760px) {
-      body { overflow: auto; }
+      body {
+        overflow: auto;
+        /* A nowrap name wider than the viewport must clip, never scroll the page. */
+        overflow-x: clip;
+      }
 
       .page {
         grid-template-columns: 1fr;
         grid-template-rows: auto 1fr auto;
-        gap: 38px;
+        gap: clamp(24px, 6vh, 40px);
         min-height: 100svh;
+        /* max() keeps the design padding on notchless phones and adds the safe-area
+           inset on top of it where the hardware eats into the viewport. */
         padding: 24px 22px 28px;
+        padding-right: max(22px, env(safe-area-inset-right));
+        padding-bottom: max(28px, env(safe-area-inset-bottom));
+        padding-left: max(22px, env(safe-area-inset-left));
       }
 
       .topbar,
@@ -292,10 +307,14 @@
 
       .topbar { grid-row: 1; }
       .kaomoji { display: none; }
-      .identity { grid-row: 2; align-self: end; padding: 18vh 0 0; }
 
+      /* A fixed vh offset stranded the name halfway down tall phones and shoved it
+         off short ones; clamping keeps it anchored above the links on both. */
+      .identity { grid-row: 2; align-self: end; padding: clamp(40px, 10vh, 120px) 0 0; }
+
+      /* 6 glyphs at 76px overflowed a 320px viewport; the smaller floor fits. */
       h1 {
-        font-size: clamp(76px, 25.5vw, 116px);
+        font-size: clamp(64px, 23vw, 116px);
         letter-spacing: -0.04em;
       }
 
@@ -303,11 +322,32 @@
       .links { grid-row: 3; }
       .nav-link { min-height: 56px; }
 
+      /* Finger-sized target: the visual icon stays 15px, only the hit box grows. */
       .theme-toggle {
-        width: 34px;
-        height: 34px;
-        margin: -9px -8px -9px 0;
+        width: 44px;
+        height: 44px;
+        margin: -13px -12px -13px 0;
       }
+    }
+
+    /* Landscape phones fall between the desktop compact query (min-width 761px) and
+       the portrait phone query: without this they got the portrait layout with a
+       10vh dead zone and a name taller than the screen. */
+    @media (max-width: 920px) and (max-height: 500px) {
+      .page {
+        gap: 20px;
+        padding-top: 16px;
+        padding-bottom: max(20px, env(safe-area-inset-bottom));
+      }
+
+      .identity {
+        align-self: center;
+        padding-top: 0;
+      }
+
+      h1 { font-size: clamp(44px, 15vh, 76px); }
+      .motto { margin-top: 12px; }
+      .nav-link { min-height: 48px; }
     }
 
     @media (prefers-reduced-motion: reduce) {

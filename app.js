@@ -211,7 +211,7 @@
       // nothing at frame time. Ambient forms cycle; the rest belong to a link.
       const forms = [
         { id: "lighthouse", ambient: true, draw: drawLighthouse },
-        { id: "bars", ambient: false, draw: drawBars },
+        { id: "book", ambient: false, draw: drawBook },
         { id: "chevron", ambient: false, draw: drawChevron },
         { id: "fork", ambient: false, draw: drawFork }
       ];
@@ -391,21 +391,47 @@
         ctx.fill();
       }
 
-      // Ruled lines of prose. Horizontal runs land between grid rows and get their
-      // coverage split, so these are drawn heavier than the curved forms to survive it.
-      function drawBars(ctx, radius) {
-        const widths = [1, 0.86, 0.96, 0.64, 0.92, 0.46];
-        const spacing = radius * 0.3;
-        const top = -((widths.length - 1) * spacing) / 2;
+      // An open book for the blog. Stroked like the other link forms: a filled book
+      // collapses into a blob at this grid resolution, while the cover curve and the
+      // spine stay readable. The page tops bow upward away from the spine, which is
+      // what separates an open book from a folded card.
+      function drawBook(ctx, radius) {
+        const r = radius;
+        const outerX = r * 0.88;
+        const spineTop = -r * 0.5;
+        const spineBottom = r * 0.64;
 
-        ctx.lineWidth = 2.7;
+        ctx.lineWidth = 2.4;
+        ctx.lineJoin = "round";
         ctx.lineCap = "round";
 
-        for (let line = 0; line < widths.length; line += 1) {
-          const y = Math.round(top + line * spacing) + 0.5;
+        // Cover: two page blocks curving out of the spine.
+        ctx.beginPath();
+        ctx.moveTo(0, spineTop);
+        ctx.quadraticCurveTo(-r * 0.45, -r * 0.72, -outerX, -r * 0.54);
+        ctx.lineTo(-outerX, r * 0.42);
+        ctx.quadraticCurveTo(-r * 0.45, r * 0.24, 0, spineBottom);
+        ctx.moveTo(0, spineTop);
+        ctx.quadraticCurveTo(r * 0.45, -r * 0.72, outerX, -r * 0.54);
+        ctx.lineTo(outerX, r * 0.42);
+        ctx.quadraticCurveTo(r * 0.45, r * 0.24, 0, spineBottom);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(0, spineTop);
+        ctx.lineTo(0, spineBottom);
+        ctx.stroke();
+
+        // Lines of type, kept short of the cover edges and tilted with the page bow.
+        ctx.lineWidth = 1.7;
+
+        for (const fraction of [-0.28, -0.08, 0.12]) {
+          const y = r * fraction;
           ctx.beginPath();
-          ctx.moveTo(-radius * 0.92, y);
-          ctx.lineTo(-radius * 0.92 + radius * 1.84 * widths[line], y);
+          ctx.moveTo(-r * 0.68, y);
+          ctx.lineTo(-r * 0.16, y - r * 0.04);
+          ctx.moveTo(r * 0.16, y - r * 0.04);
+          ctx.lineTo(r * 0.68, y);
           ctx.stroke();
         }
       }
@@ -989,17 +1015,48 @@
           return;
         }
 
+        // A fresh hold cancels any release still waiting out its grace period, so
+        // crossing from one link straight onto the next morphs form-to-form instead
+        // of flashing the lighthouse in between.
+        cancelScheduledRelease();
         heldForm = index;
         setForm(index, performance.now());
       }
 
       function releaseForm() {
+        cancelScheduledRelease();
+
         if (heldForm === null) {
           return;
         }
 
         heldForm = null;
         setForm(ambientOrder[ambientCursor], performance.now());
+      }
+
+      // pointerleave on one link fires before pointerenter on the next. Releasing
+      // immediately would snap the field back to the lighthouse for a beat between
+      // adjacent hovers, so the release waits a short grace period; a new hold (or
+      // an outright pointer exit) cancels or pre-empts it.
+      let releaseTimer = 0;
+
+      function scheduleRelease() {
+        if (heldForm === null) {
+          return;
+        }
+
+        cancelScheduledRelease();
+        releaseTimer = window.setTimeout(() => {
+          releaseTimer = 0;
+          releaseForm();
+        }, 140);
+      }
+
+      function cancelScheduledRelease() {
+        if (releaseTimer !== 0) {
+          window.clearTimeout(releaseTimer);
+          releaseTimer = 0;
+        }
       }
 
       function readStoredTheme() {
@@ -1773,8 +1830,8 @@
       for (const link of document.querySelectorAll(".nav-link[data-form]")) {
         link.addEventListener("pointerenter", () => holdForm(link.dataset.form));
         link.addEventListener("focus", () => holdForm(link.dataset.form));
-        link.addEventListener("pointerleave", releaseForm);
-        link.addEventListener("blur", releaseForm);
+        link.addEventListener("pointerleave", scheduleRelease);
+        link.addEventListener("blur", scheduleRelease);
       }
 
       themeToggle.addEventListener("click", () => {
@@ -1804,22 +1861,37 @@
 
       // pointerleave does not bubble, so a window-level listener never sees the cursor
       // leaving the viewport. A null relatedTarget on pointerout is the reliable signal.
+      // The held form is released here too: leaving the window from on top of a link
+      // never fires that link's pointerleave, which used to pin the field on the
+      // link's form until it was hovered again.
       document.addEventListener("pointerout", (event) => {
         if (!event.relatedTarget) {
           deactivatePointer();
+          releaseForm();
         }
       });
 
       // Touch contact ends without a trailing pointermove, which would otherwise park
-      // the field at the last touched position forever.
+      // the field at the last touched position forever. A tap that opens a link also
+      // never fires pointerleave, so the held form is released with it.
       document.addEventListener("pointerup", (event) => {
         if (event.pointerType !== "mouse") {
           deactivatePointer();
+          releaseForm();
         }
       });
 
-      document.addEventListener("pointercancel", deactivatePointer);
-      window.addEventListener("blur", deactivatePointer);
+      document.addEventListener("pointercancel", () => {
+        deactivatePointer();
+        releaseForm();
+      });
+
+      // Switching apps while hovering a link (a mailto handler opening, alt-tab)
+      // fires no pointer events at all. Blur is the last chance to let the form go.
+      window.addEventListener("blur", () => {
+        deactivatePointer();
+        releaseForm();
+      });
 
       window.addEventListener("resize", () => {
         cancelAnimationFrame(resizeFrame);
@@ -1829,7 +1901,12 @@
       document.addEventListener("visibilitychange", () => {
         cancelAnimationFrame(animationFrame);
 
-        if (!document.hidden && !reducedMotion) {
+        if (document.hidden) {
+          // A link that navigates away (blog, GitHub) backgrounds the tab with the
+          // pointer still "on" it; without this the field is stuck on that link's
+          // form when the visitor comes back.
+          releaseForm();
+        } else if (!reducedMotion) {
           lastPaint = 0;
           animationFrame = requestAnimationFrame(loop);
         }

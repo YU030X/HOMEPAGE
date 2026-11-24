@@ -1,38 +1,42 @@
     /* Dark is the default set so the page still renders if the head script is blocked. */
     :root {
       color-scheme: dark;
-      --base: #050606;
-      --ink: #edede7;
-      --mid: #9a9d99;
-      --dim: #7f837f;
-      --line: rgba(237, 237, 231, 0.2);
-      --panel: rgba(5, 6, 6, 0.1);
-      --hover: rgba(237, 237, 231, 0.065);
-      --scanline: rgba(5, 6, 6, 0.46);
-      --scanline-opacity: 0.72;
+      --base: #0e141b;
+      --ink: #e6ecee;
+      --mid: #b8c6ce;
+      --dim: #7f929d;
+      --accent: #8fb5c9;
+      --text-glow: rgba(14, 20, 27, 0.88);
+      --line: rgba(230, 236, 238, 0.16);
+      --panel: rgba(14, 20, 27, 0.12);
+      --hover: rgba(143, 181, 201, 0.1);
+      --scanline: rgba(14, 20, 27, 0.42);
+      --scanline-opacity: 0.12;
       --noise-a: rgba(255, 255, 255, 0.2);
       --noise-b: rgba(255, 255, 255, 0.12);
-      --noise-opacity: 0.12;
+      --noise-opacity: 0.05;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
     }
 
-    /* Warm paper. Ink stays a deep grey rather than black to keep the print feel. */
+    /* Warm paper. Ink stays a deep slate rather than pure black to keep the print feel. */
     :root[data-theme="paper"] {
       color-scheme: light;
-      --base: #eae6dc;
-      --ink: #232421;
-      --mid: #4a4b47;
-      --dim: #5d5e58;
-      --line: rgba(35, 36, 33, 0.2);
+      --base: #f2efe9;
+      --ink: #1e262b;
+      --mid: #3a4a54;
+      --dim: #62747f;
+      --accent: #476675;
+      --text-glow: rgba(242, 239, 233, 0.92);
+      --line: rgba(30, 38, 43, 0.18);
       /* Kept near zero on purpose: the dark panel fill resolves to the field colour and
          is a no-op, so the corner brackets frame the links in both themes, not a plate. */
-      --panel: rgba(35, 36, 33, 0.015);
-      --hover: rgba(35, 36, 33, 0.055);
-      --scanline: rgba(35, 36, 33, 0.16);
-      --scanline-opacity: 0.5;
+      --panel: rgba(30, 38, 43, 0.015);
+      --hover: rgba(71, 102, 117, 0.09);
+      --scanline: rgba(30, 38, 43, 0.14);
+      --scanline-opacity: 0.07;
       --noise-a: rgba(35, 36, 33, 0.22);
       --noise-b: rgba(35, 36, 33, 0.14);
-      --noise-opacity: 0.16;
+      --noise-opacity: 0.06;
     }
 
     * { box-sizing: border-box; }
@@ -59,7 +63,7 @@
       pointer-events: none;
     }
 
-    canvas { width: 100%; height: 100%; }
+    canvas { width: 100%; height: 100%; image-rendering: pixelated; }
 
     /* Below the content layer on purpose. Overlaying the type banded the name on the
        dark theme while doing nothing on paper, where dark lines fall on dark ink. The
@@ -185,6 +189,7 @@
       font-size: clamp(13px, 1.2vw, 16px);
       line-height: 1.6;
       text-align: right;
+      text-shadow: 0 1px 10px var(--text-glow);
     }
 
     .identity-character {
@@ -220,6 +225,7 @@
       padding: 0 10px;
       color: var(--mid);
       text-decoration: none;
+      text-shadow: 0 1px 10px var(--text-glow);
       transition: color 130ms steps(2, end), background-color 130ms steps(2, end), transform 130ms steps(2, end);
       /* Kill the grey flash iOS/Android paints on tap; :active below replaces it. */
       -webkit-tap-highlight-color: transparent;
@@ -239,7 +245,7 @@
       content: ">";
       width: 0;
       overflow: hidden;
-      color: var(--ink);
+      color: var(--accent);
       transition: width 130ms steps(2, end);
     }
 
@@ -306,7 +312,6 @@
       .links { grid-column: 1; }
 
       .topbar { grid-row: 1; }
-      .kaomoji { display: none; }
 
       /* A fixed vh offset stranded the name halfway down tall phones and shoved it
          off short ones; clamping keeps it anchored above the links on both. */

@@ -134,6 +134,10 @@
         return Math.min(width, height) * (width < 760 ? 0.34 : 0.29);
       }
 
+      function getFishLength(radiusCss = formRadiusCss()) {
+        return Math.max(22, radiusCss * fishConfig.length);
+      }
+
       const beamConfig = {
         speed: 0.62,
         halfWidth: 0.115,
@@ -149,17 +153,17 @@
         minDelay: 6000,
         maxDelay: 15000,
         gravity: 680,
-        riseMin: 110,
-        riseMax: 185,
-        driftMin: 95,
-        driftMax: 180,
-        length: 0.4,
+        riseMin: 80,
+        riseMax: 140,
+        driftMin: 75,
+        driftMax: 145,
+        length: 0.22,
         dropletMax: MAX_DROPLETS,
-        dropletPerSplash: 10,
-        dropletSpeed: 175,
+        dropletPerSplash: 8,
+        dropletSpeed: 145,
         dropletGravity: 900,
         dropletLife: 1100,
-        splashImpulse: 0.5
+        splashImpulse: 0.42
       };
 
       const swellWaves = [
@@ -782,29 +786,29 @@
           vec2 d = p - sp.xy;
           float lum = 0.0;
 
-          float rx = 8.0 + age * 62.0;
+          float rx = 6.0 + age * 44.0;
           float ry = rx * 0.27;
           float ringDist = abs(length(vec2(d.x / rx, d.y / ry)) - 1.0) * ry;
           float fade = pow(1.0 - age / 0.95, 1.3);
-          lum = max(lum, invSmooth(0.5, 2.6, ringDist) * 0.85 * fade);
+          lum = max(lum, invSmooth(0.5, 2.4, ringDist) * 0.85 * fade);
 
           if (age > 0.12) {
-            float rx2 = 4.0 + (age - 0.12) * 42.0;
+            float rx2 = 3.0 + (age - 0.12) * 30.0;
             float ry2 = rx2 * 0.27;
             float ringDist2 = abs(length(vec2(d.x / rx2, d.y / ry2)) - 1.0) * ry2;
             float fade2 = pow(1.0 - (age - 0.12) / 0.83, 1.4);
-            lum = max(lum, invSmooth(0.4, 2.1, ringDist2) * 0.65 * fade2);
+            lum = max(lum, invSmooth(0.4, 2.0, ringDist2) * 0.65 * fade2);
           }
 
           if (age < 0.44 && d.y <= 3.0) {
             float cProg = age / 0.44;
-            float crownH = sin(cProg * 3.14159265) * 28.0;
-            float wingW = 7.0 + cProg * 20.0;
+            float crownH = sin(cProg * 3.14159265) * 20.0;
+            float wingW = 5.0 + cProg * 14.0;
             float cFade = 1.0 - cProg;
-            float plumeL = sdSegment(d, vec2(-3.0, 0.0), vec2(-wingW, -crownH));
-            float plumeR = sdSegment(d, vec2(3.0, 0.0), vec2(wingW, -crownH));
+            float plumeL = sdSegment(d, vec2(-2.0, 0.0), vec2(-wingW, -crownH));
+            float plumeR = sdSegment(d, vec2(2.0, 0.0), vec2(wingW, -crownH));
             float plumeC = sdSegment(d, vec2(0.0, 0.0), vec2(0.0, -crownH * 0.85));
-            lum = max(lum, invSmooth(0.6, 3.2, min(plumeL, min(plumeR, plumeC))) * 0.92 * cFade);
+            lum = max(lum, invSmooth(0.5, 2.8, min(plumeL, min(plumeR, plumeC))) * 0.9 * cFade);
           }
 
           return clamp(lum, 0.0, 1.0);
@@ -1363,7 +1367,7 @@
         const surfaceY = horizonY + (height - horizonY) * (0.36 + Math.random() * 0.44);
         const rise = fishConfig.riseMin + Math.random() * (fishConfig.riseMax - fishConfig.riseMin);
         const direction = Math.random() < 0.5 ? -1 : 1;
-        const fLen = Math.max(28, formRadiusCss() * fishConfig.length);
+        const fLen = getFishLength();
         const submergeDepth = fLen * 0.58;
 
         fish.active = true;
@@ -1395,7 +1399,7 @@
           return;
         }
 
-        const fLen = Math.max(28, formRadiusCss() * fishConfig.length);
+        const fLen = getFishLength();
         fish.vy += fishConfig.gravity * deltaSeconds;
         fish.x += fish.vx * deltaSeconds;
         fish.y += fish.vy * deltaSeconds;
@@ -2049,7 +2053,7 @@
       }
 
       function computeFishAnim(time, radiusCss) {
-        const fishLen = Math.max(30, radiusCss * fishConfig.length);
+        const fishLen = getFishLength(radiusCss);
         const rawProgress = fish.active && fish.duration > 0
           ? Math.min(1, Math.max(0, (time - fish.startTime) * 0.001 / fish.duration))
           : 0;
@@ -2101,7 +2105,7 @@
           const remaining = Math.max(0, 1 - d.age / d.life);
           dropletUniformData[i * 4] = d.x;
           dropletUniformData[i * 4 + 1] = d.y;
-          dropletUniformData[i * 4 + 2] = 3.2;
+          dropletUniformData[i * 4 + 2] = 2.6;
           dropletUniformData[i * 4 + 3] = remaining;
         }
 
@@ -2387,27 +2391,27 @@
         const dy = py - sp.y;
         let lum = 0;
 
-        const rx = 8 + age * 62;
+        const rx = 6 + age * 44;
         const ry = rx * 0.27;
         const ringDist = Math.abs(Math.hypot(dx / rx, dy / ry) - 1) * ry;
-        lum = Math.max(lum, smoothstepJs(2.6, 0.5, ringDist) * 0.85 * Math.pow(1 - age / 0.95, 1.3));
+        lum = Math.max(lum, smoothstepJs(2.4, 0.5, ringDist) * 0.85 * Math.pow(1 - age / 0.95, 1.3));
 
         if (age > 0.12) {
-          const rx2 = 4 + (age - 0.12) * 42;
+          const rx2 = 3 + (age - 0.12) * 30;
           const ry2 = rx2 * 0.27;
           const ringDist2 = Math.abs(Math.hypot(dx / rx2, dy / ry2) - 1) * ry2;
-          lum = Math.max(lum, smoothstepJs(2.1, 0.4, ringDist2) * 0.65 * Math.pow(1 - (age - 0.12) / 0.83, 1.4));
+          lum = Math.max(lum, smoothstepJs(2.0, 0.4, ringDist2) * 0.65 * Math.pow(1 - (age - 0.12) / 0.83, 1.4));
         }
 
         if (age < 0.44 && dy <= 3) {
           const cProg = age / 0.44;
-          const crownH = Math.sin(cProg * Math.PI) * 28;
-          const wingW = 7 + cProg * 20;
+          const crownH = Math.sin(cProg * Math.PI) * 20;
+          const wingW = 5 + cProg * 14;
           const cFade = 1 - cProg;
-          const plumeL = sdSegmentJs(dx, dy, -3, 0, -wingW, -crownH);
-          const plumeR = sdSegmentJs(dx, dy, 3, 0, wingW, -crownH);
+          const plumeL = sdSegmentJs(dx, dy, -2, 0, -wingW, -crownH);
+          const plumeR = sdSegmentJs(dx, dy, 2, 0, wingW, -crownH);
           const plumeC = sdSegmentJs(dx, dy, 0, 0, 0, -crownH * 0.85);
-          lum = Math.max(lum, smoothstepJs(3.2, 0.6, Math.min(plumeL, plumeR, plumeC)) * 0.92 * cFade);
+          lum = Math.max(lum, smoothstepJs(2.8, 0.5, Math.min(plumeL, plumeR, plumeC)) * 0.9 * cFade);
         }
         return Math.min(1, lum);
       }
@@ -2636,8 +2640,8 @@
             let dropletLum = 0;
             for (const d of droplets) {
               const dd = Math.hypot(x - d.x, y - d.y);
-              if (dd < 3.2) {
-                dropletLum = Math.max(dropletLum, (1 - dd / 3.2) * Math.max(0, 1 - d.age / d.life));
+              if (dd < 2.6) {
+                dropletLum = Math.max(dropletLum, (1 - dd / 2.6) * Math.max(0, 1 - d.age / d.life));
               }
             }
 

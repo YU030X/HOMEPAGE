@@ -425,7 +425,7 @@
       }
 
       function drawForkMask(ctx, radius) {
-        ctx.fillRect(-radius * 0.36, -radius * 0.48, radius * 0.74, radius * 0.96);
+        ctx.fillRect(-radius * 0.52, -radius * 0.48, radius * 0.74, radius * 0.96);
       }
 
       // ---------------------------------------------------------------------------
@@ -700,84 +700,132 @@
           return clamp(lum, 0.0, 1.0);
         }
 
-        // Compact GitHub branch tree with repeating extend-hold-retract entrance animation
+        float easeCubic(float t) {
+          if (t < 0.5) {
+            return 4.0 * t * t * t;
+          }
+          float s = -2.0 * t + 2.0;
+          return 1.0 - 0.5 * s * s * s;
+        }
+
+        float evalForkNode(float d, float curR, float nodeR, float strokeW, float vis, float ringProg) {
+          float lum = 0.0;
+          if (vis > 0.01) {
+            lum = max(lum, invSmooth(curR * 0.8, curR * 2.5, d) * 0.36 * vis);
+            lum = max(lum, invSmooth(strokeW * 0.5, strokeW + 1.6, abs(d - curR)) * 0.98 * vis);
+          }
+          if (ringProg > 0.0 && ringProg < 1.0) {
+            float rr = nodeR * (1.05 + ringProg * 1.9);
+            float rf = pow(max(1e-4, 1.0 - ringProg), 1.4);
+            lum = max(lum, invSmooth(0.6, 3.2, abs(d - rr)) * 0.85 * rf);
+          }
+          return lum;
+        }
+
+        // GitHub branch tree with staged trunk-grow -> S-branch-extend -> commit sonar rings
         float evalFork(vec2 p, vec2 center, float r, float age, float rm) {
           vec2 lp = p - center;
-          if (abs(lp.x) > r * 0.62 || abs(lp.y) > r * 0.68) {
+          if (abs(lp.x + r * 0.14) > r * 0.68 || abs(lp.y) > r * 0.72) {
             return 0.0;
           }
 
-          float trunkX = -r * 0.26;
-          float branchX = r * 0.28;
+          float trunkX = -r * 0.40;
+          float branchX = r * 0.12;
           float topY = -r * 0.4;
           float botY = r * 0.42;
           float juncY = r * 0.1;
           float nodeR = max(6.0, r * 0.088);
           float strokeW = max(2.2, r * 0.036);
 
-          float grow = 1.0;
+          float botVis = 1.0;
+          float trunkGrow = 1.0;
+          float topMainVis = 1.0;
+          float branchGrow = 1.0;
+          float botRing = -1.0;
+          float topMainRing = -1.0;
+          float branchRing = -1.0;
+
           if (rm < 0.5) {
-            float cycle = mod(age, 5.2);
-            if (cycle < 0.85) {
-              float t = cycle / 0.85;
-              grow = t < 0.5 ? 4.0 * t * t * t : 1.0 - pow(-2.0 * t + 2.0, 3.0) / 2.0;
-            } else if (cycle < 3.6) {
-              grow = 1.0;
-            } else if (cycle < 4.45) {
-              float t = (cycle - 3.6) / 0.85;
-              grow = 1.0 - (t < 0.5 ? 4.0 * t * t * t : 1.0 - pow(-2.0 * t + 2.0, 3.0) / 2.0);
+            botVis = smoothstep(0.10, 0.44, age);
+            botRing = (age - 0.18) / 0.58;
+            trunkGrow = easeCubic(clamp((age - 0.26) / 0.62, 0.0, 1.0));
+            topMainVis = smoothstep(0.76, 1.10, age);
+            topMainRing = (age - 0.82) / 0.58;
+
+            if (age < 3.40) {
+              branchGrow = easeCubic(clamp((age - 0.85) / 0.80, 0.0, 1.0));
+              branchRing = (age - 1.48) / 0.65;
             } else {
-              grow = 0.0;
+              float loopAge = mod(age - 3.40, 3.60);
+              if (loopAge < 0.70) {
+                branchGrow = 1.0 - easeCubic(loopAge / 0.70);
+              } else if (loopAge < 0.95) {
+                branchGrow = 0.0;
+              } else if (loopAge < 1.75) {
+                branchGrow = easeCubic((loopAge - 0.95) / 0.80);
+              } else {
+                branchGrow = 1.0;
+              }
+              branchRing = (loopAge - 1.58) / 0.65;
             }
           }
 
           float lum = 0.0;
 
-          // Main vertical trunk
-          float dTrunk = sdSegment(lp, vec2(trunkX, botY - nodeR), vec2(trunkX, topY + nodeR));
-          lum = max(lum, invSmooth(strokeW * 0.5, strokeW + 1.8, dTrunk) * 0.92);
-          lum = max(lum, invSmooth(strokeW, strokeW + 9.0, dTrunk) * 0.26);
+          // Main vertical trunk growing upward from root node
+          float trunkStartY = botY - nodeR;
+          float trunkEndY = topY + nodeR;
+          if (trunkGrow > 0.01) {
+            float curTopY = mix(trunkStartY, trunkEndY, trunkGrow);
+            float dTrunk = sdSegment(lp, vec2(trunkX, trunkStartY), vec2(trunkX, curTopY));
+            lum = max(lum, invSmooth(strokeW * 0.5, strokeW + 1.8, dTrunk) * 0.92);
+            lum = max(lum, invSmooth(strokeW, strokeW + 9.0, dTrunk) * 0.26);
+            if (rm < 0.5 && trunkGrow < 0.99) {
+              lum = max(lum, invSmooth(strokeW * 0.5, strokeW * 4.2, length(lp - vec2(trunkX, curTopY))) * 0.95 * sin(trunkGrow * 3.14159265));
+            }
+          }
 
-          // S-curve branch extending right from trunk and retracting smoothly
-          if (grow > 0.01) {
-            float ySpan = (topY + nodeR) - juncY;
-            float tRaw = clamp((lp.y - juncY) / ySpan, 0.0, grow);
+          // S-curve branch extending right from trunk with leading tip glow
+          float ySpan = (topY + nodeR) - juncY;
+          if (branchGrow > 0.01) {
+            float tRaw = clamp((lp.y - juncY) / ySpan, 0.0, branchGrow);
             float s = tRaw * tRaw * (3.0 - 2.0 * tRaw);
             vec2 curvePt = vec2(mix(trunkX, branchX, s), juncY + tRaw * ySpan);
             float dsdT = 6.0 * tRaw * (1.0 - tRaw);
             float dxdy = (branchX - trunkX) * dsdT / ySpan;
-            float dBranch = (lp.y <= juncY && lp.y >= juncY + grow * ySpan)
+            float dBranch = (lp.y <= juncY && lp.y >= juncY + branchGrow * ySpan)
               ? abs(lp.x - curvePt.x) / sqrt(1.0 + dxdy * dxdy)
               : length(lp - curvePt);
             lum = max(lum, invSmooth(strokeW * 0.5, strokeW + 1.8, dBranch) * 0.92);
             lum = max(lum, invSmooth(strokeW, strokeW + 9.0, dBranch) * 0.26);
+            if (rm < 0.5 && branchGrow > 0.02 && branchGrow < 0.99) {
+              float tipS = branchGrow * branchGrow * (3.0 - 2.0 * branchGrow);
+              vec2 branchTip = vec2(mix(trunkX, branchX, tipS), juncY + branchGrow * ySpan);
+              lum = max(lum, invSmooth(strokeW * 0.5, strokeW * 4.5, length(lp - branchTip)) * 0.98 * sin(branchGrow * 3.14159265));
+            }
           }
 
-          // Two steady trunk nodes + right branch node emerging at end of extension
-          vec2 botNode = vec2(trunkX, botY);
-          vec2 topMain = vec2(trunkX, topY);
-          vec2 topBranch = vec2(branchX, topY);
-          float branchVis = rm > 0.5 ? 1.0 : smoothstep(0.76, 1.0, grow);
-          float curBranchR = nodeR * mix(0.45, 1.0, branchVis);
+          // Three commit nodes + expanding sonar commit rings
+          float branchVis = rm > 0.5 ? 1.0 : smoothstep(0.72, 1.0, branchGrow);
+          float curBotR = nodeR * mix(0.35, 1.0, botVis);
+          float curTopMR = nodeR * mix(0.35, 1.0, topMainVis);
+          float curBranchR = nodeR * mix(0.35, 1.0, branchVis);
 
-          float dBot = length(lp - botNode);
-          float dTopM = length(lp - topMain);
-          float dTopB = length(lp - topBranch);
+          float dBot = length(lp - vec2(trunkX, botY));
+          float dTopM = length(lp - vec2(trunkX, topY));
+          float dTopB = length(lp - vec2(branchX, topY));
 
-          lum = max(lum, invSmooth(nodeR * 0.8, nodeR * 2.5, dBot) * 0.36);
-          lum = max(lum, invSmooth(strokeW * 0.5, strokeW + 1.6, abs(dBot - nodeR)) * 0.98);
-
-          lum = max(lum, invSmooth(nodeR * 0.8, nodeR * 2.5, dTopM) * 0.36);
-          lum = max(lum, invSmooth(strokeW * 0.5, strokeW + 1.6, abs(dTopM - nodeR)) * 0.98);
-
-          if (branchVis > 0.01) {
-            lum = max(lum, invSmooth(curBranchR * 0.8, curBranchR * 2.5, dTopB) * 0.36 * branchVis);
-            lum = max(lum, invSmooth(strokeW * 0.5, strokeW + 1.6, abs(dTopB - curBranchR)) * 0.98 * branchVis);
-          }
+          lum = max(lum, evalForkNode(dBot, curBotR, nodeR, strokeW, botVis, botRing));
+          lum = max(lum, evalForkNode(dTopM, curTopMR, nodeR, strokeW, topMainVis, topMainRing));
+          lum = max(lum, evalForkNode(dTopB, curBranchR, nodeR, strokeW, branchVis, branchRing));
 
           // Keep node centers cleanly hollow
-          lum *= smoothstep(nodeR - strokeW * 0.7, nodeR - strokeW * 0.2, dBot);
-          lum *= smoothstep(nodeR - strokeW * 0.7, nodeR - strokeW * 0.2, dTopM);
+          if (botVis > 0.01) {
+            lum *= mix(1.0, smoothstep(curBotR - strokeW * 0.7, curBotR - strokeW * 0.2, dBot), botVis);
+          }
+          if (topMainVis > 0.01) {
+            lum *= mix(1.0, smoothstep(curTopMR - strokeW * 0.7, curTopMR - strokeW * 0.2, dTopM), topMainVis);
+          }
           if (branchVis > 0.01) {
             lum *= mix(1.0, smoothstep(curBranchR - strokeW * 0.7, curBranchR - strokeW * 0.2, dTopB), branchVis);
           }
@@ -2329,70 +2377,121 @@
         return Math.min(1, lum);
       }
 
+      function evalForkNodeJs(d, curR, nodeR, strokeW, vis, ringProg) {
+        let lum = 0;
+        if (vis > 0.01) {
+          lum = Math.max(lum, smoothstepJs(curR * 2.5, curR * 0.8, d) * 0.36 * vis);
+          lum = Math.max(lum, smoothstepJs(strokeW + 1.6, strokeW * 0.5, Math.abs(d - curR)) * 0.98 * vis);
+        }
+        if (ringProg > 0 && ringProg < 1) {
+          const rr = nodeR * (1.05 + ringProg * 1.9);
+          const rf = Math.pow(Math.max(1e-4, 1 - ringProg), 1.4);
+          lum = Math.max(lum, smoothstepJs(3.2, 0.6, Math.abs(d - rr)) * 0.85 * rf);
+        }
+        return lum;
+      }
+
       function evalForkJs(px, py, cx, cy, r, age, rm) {
         const lpx = px - cx;
         const lpy = py - cy;
-        if (Math.abs(lpx) > r * 0.62 || Math.abs(lpy) > r * 0.68) {
+        if (Math.abs(lpx + r * 0.14) > r * 0.68 || Math.abs(lpy) > r * 0.72) {
           return 0;
         }
-        const trunkX = -r * 0.26;
-        const branchX = r * 0.28;
+        const trunkX = -r * 0.40;
+        const branchX = r * 0.12;
         const topY = -r * 0.4;
         const botY = r * 0.42;
         const juncY = r * 0.1;
         const nodeR = Math.max(6, r * 0.088);
         const strokeW = Math.max(2.2, r * 0.036);
 
-        let grow = 1;
+        let botVis = 1;
+        let trunkGrow = 1;
+        let topMainVis = 1;
+        let branchGrow = 1;
+        let botRing = -1;
+        let topMainRing = -1;
+        let branchRing = -1;
+
         if (!rm) {
-          const cycle = age % 5.2;
-          if (cycle < 0.85) {
-            grow = easeInOutCubic(cycle / 0.85);
-          } else if (cycle < 3.6) {
-            grow = 1;
-          } else if (cycle < 4.45) {
-            grow = 1 - easeInOutCubic((cycle - 3.6) / 0.85);
+          botVis = smoothstepJs(0.10, 0.44, age);
+          botRing = (age - 0.18) / 0.58;
+          trunkGrow = easeInOutCubic(Math.min(1, Math.max(0, (age - 0.26) / 0.62)));
+          topMainVis = smoothstepJs(0.76, 1.10, age);
+          topMainRing = (age - 0.82) / 0.58;
+
+          if (age < 3.40) {
+            branchGrow = easeInOutCubic(Math.min(1, Math.max(0, (age - 0.85) / 0.80)));
+            branchRing = (age - 1.48) / 0.65;
           } else {
-            grow = 0;
+            const loopAge = (age - 3.40) % 3.60;
+            if (loopAge < 0.70) {
+              branchGrow = 1 - easeInOutCubic(loopAge / 0.70);
+            } else if (loopAge < 0.95) {
+              branchGrow = 0;
+            } else if (loopAge < 1.75) {
+              branchGrow = easeInOutCubic((loopAge - 0.95) / 0.80);
+            } else {
+              branchGrow = 1;
+            }
+            branchRing = (loopAge - 1.58) / 0.65;
           }
         }
         let lum = 0;
 
-        const dTrunk = sdSegmentJs(lpx, lpy, trunkX, botY - nodeR, trunkX, topY + nodeR);
-        lum = Math.max(lum, smoothstepJs(strokeW + 1.8, strokeW * 0.5, dTrunk) * 0.92);
-        lum = Math.max(lum, smoothstepJs(strokeW + 9, strokeW, dTrunk) * 0.26);
+        const trunkStartY = botY - nodeR;
+        const trunkEndY = topY + nodeR;
+        if (trunkGrow > 0.01) {
+          const curTopY = trunkStartY + (trunkEndY - trunkStartY) * trunkGrow;
+          const dTrunk = sdSegmentJs(lpx, lpy, trunkX, trunkStartY, trunkX, curTopY);
+          lum = Math.max(lum, smoothstepJs(strokeW + 1.8, strokeW * 0.5, dTrunk) * 0.92);
+          lum = Math.max(lum, smoothstepJs(strokeW + 9, strokeW, dTrunk) * 0.26);
+          if (!rm && trunkGrow < 0.99) {
+            const dTip = Math.hypot(lpx - trunkX, lpy - curTopY);
+            lum = Math.max(lum, smoothstepJs(strokeW * 4.2, strokeW * 0.5, dTip) * 0.95 * Math.sin(trunkGrow * Math.PI));
+          }
+        }
 
-        if (grow > 0.01) {
-          const ySpan = (topY + nodeR) - juncY;
-          const tRaw = Math.min(grow, Math.max(0, (lpy - juncY) / ySpan));
+        const ySpan = (topY + nodeR) - juncY;
+        if (branchGrow > 0.01) {
+          const tRaw = Math.min(branchGrow, Math.max(0, (lpy - juncY) / ySpan));
           const s = tRaw * tRaw * (3 - 2 * tRaw);
           const cxPt = trunkX + (branchX - trunkX) * s;
           const cyPt = juncY + tRaw * ySpan;
           const dxdy = (branchX - trunkX) * 6 * tRaw * (1 - tRaw) / ySpan;
-          const dBranch = (lpy <= juncY && lpy >= juncY + grow * ySpan)
+          const dBranch = (lpy <= juncY && lpy >= juncY + branchGrow * ySpan)
             ? Math.abs(lpx - cxPt) / Math.hypot(1, dxdy)
             : Math.hypot(lpx - cxPt, lpy - cyPt);
           lum = Math.max(lum, smoothstepJs(strokeW + 1.8, strokeW * 0.5, dBranch) * 0.92);
           lum = Math.max(lum, smoothstepJs(strokeW + 9, strokeW, dBranch) * 0.26);
+          if (!rm && branchGrow > 0.02 && branchGrow < 0.99) {
+            const tipS = branchGrow * branchGrow * (3 - 2 * branchGrow);
+            const tipX = trunkX + (branchX - trunkX) * tipS;
+            const tipY = juncY + branchGrow * ySpan;
+            const dTip = Math.hypot(lpx - tipX, lpy - tipY);
+            lum = Math.max(lum, smoothstepJs(strokeW * 4.5, strokeW * 0.5, dTip) * 0.98 * Math.sin(branchGrow * Math.PI));
+          }
         }
 
-        const branchVis = rm ? 1 : smoothstepJs(0.76, 1, grow);
-        const curBranchR = nodeR * (0.45 + 0.55 * branchVis);
+        const branchVis = rm ? 1 : smoothstepJs(0.72, 1, branchGrow);
+        const curBotR = nodeR * (0.35 + 0.65 * botVis);
+        const curTopMR = nodeR * (0.35 + 0.65 * topMainVis);
+        const curBranchR = nodeR * (0.35 + 0.65 * branchVis);
+
         const dBot = Math.hypot(lpx - trunkX, lpy - botY);
         const dTopM = Math.hypot(lpx - trunkX, lpy - topY);
         const dTopB = Math.hypot(lpx - branchX, lpy - topY);
 
-        lum = Math.max(lum, smoothstepJs(nodeR * 2.5, nodeR * 0.8, dBot) * 0.36);
-        lum = Math.max(lum, smoothstepJs(strokeW + 1.6, strokeW * 0.5, Math.abs(dBot - nodeR)) * 0.98);
-        lum = Math.max(lum, smoothstepJs(nodeR * 2.5, nodeR * 0.8, dTopM) * 0.36);
-        lum = Math.max(lum, smoothstepJs(strokeW + 1.6, strokeW * 0.5, Math.abs(dTopM - nodeR)) * 0.98);
-        if (branchVis > 0.01) {
-          lum = Math.max(lum, smoothstepJs(curBranchR * 2.5, curBranchR * 0.8, dTopB) * 0.36 * branchVis);
-          lum = Math.max(lum, smoothstepJs(strokeW + 1.6, strokeW * 0.5, Math.abs(dTopB - curBranchR)) * 0.98 * branchVis);
-        }
+        lum = Math.max(lum, evalForkNodeJs(dBot, curBotR, nodeR, strokeW, botVis, botRing));
+        lum = Math.max(lum, evalForkNodeJs(dTopM, curTopMR, nodeR, strokeW, topMainVis, topMainRing));
+        lum = Math.max(lum, evalForkNodeJs(dTopB, curBranchR, nodeR, strokeW, branchVis, branchRing));
 
-        lum *= smoothstepJs(nodeR - strokeW * 0.7, nodeR - strokeW * 0.2, dBot);
-        lum *= smoothstepJs(nodeR - strokeW * 0.7, nodeR - strokeW * 0.2, dTopM);
+        if (botVis > 0.01) {
+          lum *= 1 - (1 - smoothstepJs(curBotR - strokeW * 0.7, curBotR - strokeW * 0.2, dBot)) * botVis;
+        }
+        if (topMainVis > 0.01) {
+          lum *= 1 - (1 - smoothstepJs(curTopMR - strokeW * 0.7, curTopMR - strokeW * 0.2, dTopM)) * topMainVis;
+        }
         if (branchVis > 0.01) {
           lum *= 1 - (1 - smoothstepJs(curBranchR - strokeW * 0.7, curBranchR - strokeW * 0.2, dTopB)) * branchVis;
         }

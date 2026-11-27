@@ -453,6 +453,7 @@
         uniform vec3 u_colorBack;
         uniform float u_lumScale;
         uniform float u_lumGamma;
+        uniform float u_isPaper;
 
         uniform sampler2D u_sourceTex;
         uniform sampler2D u_targetTex;
@@ -618,7 +619,7 @@
         }
 
         // Animated 3D opening/closing envelope with emerging letter sheet for Mail hover
-        float evalEnvelope(vec2 p, vec2 center, float r, float open) {
+        float evalEnvelope(vec2 p, vec2 center, float r, float open, float isPaper) {
           float halfW = r * 0.56;
           float halfH = r * 0.37;
           vec2 lp = p - (center + vec2(0.0, r * 0.08));
@@ -652,13 +653,20 @@
             float cardD = sdBox(lp - vec2(0.0, cardCenterY), vec2(cardHalfW, cardHalfH));
 
             if (cardD <= 0.0) {
-              lum = mix(0.42, 0.3, clamp((lp.y - cardTop) / max(lift, 1.0), 0.0, 1.0));
+              float cardGrad = clamp((lp.y - cardTop) / max(lift, 1.0), 0.0, 1.0);
               // Three crisp note lines moving rigidly with the card
               float l1 = sdSegment(lp, vec2(-halfW * 0.52, cardTop + halfH * 0.25), vec2(halfW * 0.52, cardTop + halfH * 0.25));
               float l2 = sdSegment(lp, vec2(-halfW * 0.52, cardTop + halfH * 0.47), vec2(halfW * 0.52, cardTop + halfH * 0.47));
               float l3 = sdSegment(lp, vec2(-halfW * 0.52, cardTop + halfH * 0.69), vec2(halfW * 0.22, cardTop + halfH * 0.69));
               float lineDist = min(l1, min(l2, l3));
-              lum = max(lum, smoothstep(2.1, 0.5, lineDist) * 0.96);
+              float lineMask = smoothstep(2.1, 0.5, lineDist);
+              if (isPaper > 0.5) {
+                lum = mix(0.02, 0.09, cardGrad);
+                lum = mix(lum, 0.96, lineMask);
+              } else {
+                lum = mix(0.82, 0.64, cardGrad);
+                lum = mix(lum, 0.14, lineMask);
+              }
             }
             lum = max(lum, smoothstep(2.4, 0.5, abs(cardD)) * 0.94);
           }
@@ -842,7 +850,7 @@
           float texShapeVal = mix(srcVal, dstVal, u_mix);
 
           float procSignal = u_signalWeight > 0.005 ? evalSignal(formPos, u_formCenter, u_formRadius, u_time, u_reducedMotion) * u_signalWeight : 0.0;
-          float procEnvelope = u_envelopeWeight > 0.005 ? evalEnvelope(formPos, u_formCenter, u_formRadius, u_envelopeOpen) * u_envelopeWeight : 0.0;
+          float procEnvelope = u_envelopeWeight > 0.005 ? evalEnvelope(formPos, u_formCenter, u_formRadius, u_envelopeOpen, u_isPaper) * u_envelopeWeight : 0.0;
           float procFork = u_forkWeight > 0.005 ? evalFork(formPos, u_formCenter, u_formRadius, u_forkAge, u_reducedMotion) * u_forkWeight : 0.0;
           float procShapeVal = max(procSignal, max(procEnvelope, procFork));
           float shapeVal = max(texShapeVal, procShapeVal);
@@ -1139,6 +1147,7 @@
           colorBack: gl.getUniformLocation(glProgram, "u_colorBack"),
           lumScale: gl.getUniformLocation(glProgram, "u_lumScale"),
           lumGamma: gl.getUniformLocation(glProgram, "u_lumGamma"),
+          isPaper: gl.getUniformLocation(glProgram, "u_isPaper"),
           sourceTex: gl.getUniformLocation(glProgram, "u_sourceTex"),
           targetTex: gl.getUniformLocation(glProgram, "u_targetTex"),
           waterTex: gl.getUniformLocation(glProgram, "u_waterTex"),
@@ -2126,6 +2135,7 @@
         gl.uniform3fv(glUniforms.colorBack, theme.backRGB);
         gl.uniform1f(glUniforms.lumScale, theme.lumScale);
         gl.uniform1f(glUniforms.lumGamma, theme.lumGamma);
+        gl.uniform1f(glUniforms.isPaper, themeName === "paper" ? 1.0 : 0.0);
 
         gl.uniform1f(glUniforms.mix, mix);
         gl.uniform1f(glUniforms.turbulence, turbulence);
@@ -2250,7 +2260,7 @@
         return Math.min(1, lum);
       }
 
-      function evalEnvelopeJs(px, py, cx, cy, r, open) {
+      function evalEnvelopeJs(px, py, cx, cy, r, open, isPaper) {
         const halfW = r * 0.56;
         const halfH = r * 0.37;
         const lpx = px - cx;
@@ -2280,11 +2290,18 @@
           const cardHalfH = (-halfH + 2 - cardTop) * 0.5;
           const cardD = sdBoxJs(lpx, lpy - cardCenterY, halfW * 0.78, cardHalfH);
           if (cardD <= 0) {
-            lum = 0.42 - 0.12 * Math.min(1, Math.max(0, (lpy - cardTop) / Math.max(lift, 1)));
+            const cardGrad = Math.min(1, Math.max(0, (lpy - cardTop) / Math.max(lift, 1)));
             const l1 = sdSegmentJs(lpx, lpy, -halfW * 0.52, cardTop + halfH * 0.25, halfW * 0.52, cardTop + halfH * 0.25);
             const l2 = sdSegmentJs(lpx, lpy, -halfW * 0.52, cardTop + halfH * 0.47, halfW * 0.52, cardTop + halfH * 0.47);
             const l3 = sdSegmentJs(lpx, lpy, -halfW * 0.52, cardTop + halfH * 0.69, halfW * 0.22, cardTop + halfH * 0.69);
-            lum = Math.max(lum, smoothstepJs(2.1, 0.5, Math.min(l1, l2, l3)) * 0.96);
+            const lineMask = smoothstepJs(2.1, 0.5, Math.min(l1, l2, l3));
+            if (isPaper) {
+              lum = 0.02 + 0.07 * cardGrad;
+              lum = lum + (0.96 - lum) * lineMask;
+            } else {
+              lum = 0.82 - 0.18 * cardGrad;
+              lum = lum + (0.14 - lum) * lineMask;
+            }
           }
           lum = Math.max(lum, smoothstepJs(2.4, 0.5, Math.abs(cardD)) * 0.94);
         }
@@ -2531,6 +2548,7 @@
         const coreReach = radiusCss * beamConfig.coreReach;
 
         updateFormWeights(time, mix, forms[toForm].id);
+        const isPaper = themeName === "paper";
         const turn = reducedMotion ? 0.8 : time * 0.001 * beamConfig.speed;
         const towardViewer = Math.sin(turn);
         const facing = Math.max(0, towardViewer);
@@ -2569,7 +2587,7 @@
 
             const formX = x + rowShiftPx;
             const procSignal = signalWeight > 0.005 ? evalSignalJs(formX, y, centerX, centerY, radiusCss, timeSec, reducedMotion) * signalWeight : 0;
-            const procEnvelope = envelopeWeight > 0.005 ? evalEnvelopeJs(formX, y, centerX, centerY, radiusCss, envelopeOpen) * envelopeWeight : 0;
+            const procEnvelope = envelopeWeight > 0.005 ? evalEnvelopeJs(formX, y, centerX, centerY, radiusCss, envelopeOpen, isPaper) * envelopeWeight : 0;
             const procFork = forkWeight > 0.005 ? evalForkJs(formX, y, centerX, centerY, radiusCss, forkAge, reducedMotion) * forkWeight : 0;
             const procShapeVal = Math.max(procSignal, procEnvelope, procFork);
             const shapeVal = Math.max(texShapeVal, procShapeVal);

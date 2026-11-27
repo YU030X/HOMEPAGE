@@ -63,7 +63,13 @@
       pointer-events: none;
     }
 
-    canvas { width: 100%; height: 100%; image-rendering: pixelated; }
+    #field { width: 100%; height: 100%; image-rendering: pixelated; }
+
+    #identity-field {
+      z-index: 3;
+      width: 100%;
+      height: 100%;
+    }
 
     /* Below the content layer on purpose. Overlaying the type banded the name on the
        dark theme while doing nothing on paper, where dark lines fall on dark ink. The
@@ -182,6 +188,17 @@
     }
 
     h1.is-dragging { cursor: grabbing; }
+
+    h1.is-pixel-particles {
+      color: transparent;
+      text-shadow: none;
+    }
+
+    h1.is-pixel-particles::selection,
+    h1.is-pixel-particles *::selection {
+      background: transparent;
+      color: transparent;
+    }
 
     .motto {
       margin: 18px 0 0;

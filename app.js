@@ -1,5 +1,7 @@
     (() => {
       let canvas = document.getElementById("field");
+      const identityCanvas = document.getElementById("identity-field");
+      const identityContext = identityCanvas ? identityCanvas.getContext("2d") : null;
       const heading = document.getElementById("name");
       const mottoEl = document.querySelector(".motto");
       const linksEl = document.querySelector(".links");
@@ -8,6 +10,10 @@
       const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       const identityCharacters = [];
       const draggableCharacters = [];
+      const particleMaskCanvas = document.createElement("canvas");
+      const particleMaskContext = particleMaskCanvas.getContext("2d", { willReadFrequently: true });
+      let identityColors = { ink: "#e6ecee", accent: "#8fb5c9" };
+      let identityScanStart = 0;
 
       // followX/followY lag behind the real pointer; the field reads those, so a jittery
       // hand does not produce a jittery page.
@@ -59,16 +65,26 @@
         mobileMaximumPixelRatio: 2,
         identity: {
           heading: {
-            speed: 0.00108,
-            wavelength: 0.0105,
-            lift: 5.6,
-            tilt: 1
+            speed: 0.00112,
+            wavelength: 0.0085,
+            lift: 4.8,
+            sway: 1.3,
+            tilt: 0.9
           },
           motto: {
-            speed: 0.0016,
-            wavelength: 0.014,
-            lift: 3.4,
-            tilt: 1.7
+            speed: 0.0012,
+            wavelength: 0.0092,
+            lift: 2.2,
+            sway: 0.5,
+            tilt: 0.55
+          },
+          scan: {
+            interval: 6800,
+            duration: 1850,
+            firstDelay: 900,
+            bandWidth: 0.22,
+            shimmerDip: 0.36,
+            shimmerBoost: 0.38
           }
         },
         drag: {
@@ -1740,11 +1756,22 @@
         }
       }
 
+      function readIdentityColors() {
+        const styles = getComputedStyle(document.documentElement);
+        const ink = styles.getPropertyValue("--ink").trim();
+        const accent = styles.getPropertyValue("--accent").trim();
+        identityColors = {
+          ink: ink || (themeName === "paper" ? "#1e262b" : "#e6ecee"),
+          accent: accent || theme.frontHex
+        };
+      }
+
       function applyTheme(name, persist) {
         themeName = name;
         theme = themes[name];
         document.documentElement.dataset.theme = name;
         themeToggle.setAttribute("aria-label", theme.label);
+        readIdentityColors();
 
         if (persist) {
           try {
@@ -1758,7 +1785,7 @@
       }
 
       // ---------------------------------------------------------------------------
-      // Elastic Draggable Heading Characters
+      // Elastic Draggable Heading Pixel Particles
       // ---------------------------------------------------------------------------
 
       function wrapIdentityTextCharacters() {
@@ -1786,6 +1813,7 @@
 
             identityCharacters.push({
               element,
+              glyph: character,
               centerX: 0,
               centerY: 0,
               float: line.float,
@@ -1798,6 +1826,13 @@
               lagY: 0,
               lagVX: 0,
               lagVY: 0,
+              tx: 0,
+              ty: 0,
+              rotRad: 0,
+              stretch: 0,
+              stretchAngleRad: 0,
+              particles: null,
+              particleSize: 2.2,
               transform: ""
             });
 
@@ -1819,6 +1854,325 @@
         }
       }
 
+      function hashParticle(a, b, c) {
+        let h = Math.imul(a ^ 0x9e3779b9, 0x85ebca6b);
+        h = Math.imul(h ^ b, 0xc2b2ae35);
+        h = Math.imul(h ^ c, 0x27d4eb2f);
+        h ^= h >>> 15;
+        return (h >>> 0) / 4294967296;
+      }
+
+      function fillGlyphPolygon(ctx, points) {
+        ctx.beginPath();
+        ctx.moveTo(points[0][0], points[0][1]);
+        for (let i = 1; i < points.length; i += 1) {
+          ctx.lineTo(points[i][0], points[i][1]);
+        }
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      // Draw bespoke architectural chamfered glyphs centered at (0, 0) in [-w/2, w/2] x [-h/2, h/2].
+      function drawIdentityGlyph(ctx, glyph, w, h) {
+        const hw = w * 0.5;
+        const hh = h * 0.5;
+        const sw = w * 0.24;
+        const swH = Math.min(sw, h * 0.185);
+        const c = Math.min(w, h) * 0.155;
+
+        ctx.fillStyle = "#ffffff";
+        ctx.globalCompositeOperation = "source-over";
+
+        if (glyph === "Y") {
+          fillGlyphPolygon(ctx, [
+            [-hw, -hh],
+            [-hw + sw * 1.08, -hh],
+            [0, -hh * 0.08],
+            [hw - sw * 1.08, -hh],
+            [hw, -hh],
+            [sw * 0.52, hh * 0.14],
+            [sw * 0.52, hh],
+            [-sw * 0.52, hh],
+            [-sw * 0.52, hh * 0.14]
+          ]);
+          return;
+        }
+
+        if (glyph === "U") {
+          fillGlyphPolygon(ctx, [
+            [-hw, -hh],
+            [hw, -hh],
+            [hw, hh - c],
+            [hw - c, hh],
+            [-hw + c, hh],
+            [-hw, hh - c]
+          ]);
+          ctx.globalCompositeOperation = "destination-out";
+          const ci = c * 0.55;
+          fillGlyphPolygon(ctx, [
+            [-hw + sw, -hh - 2],
+            [hw - sw, -hh - 2],
+            [hw - sw, hh - swH - ci],
+            [hw - sw - ci, hh - swH],
+            [-hw + sw + ci, hh - swH],
+            [-hw + sw, hh - swH - ci]
+          ]);
+          ctx.globalCompositeOperation = "source-over";
+          return;
+        }
+
+        if (glyph === "0") {
+          fillGlyphPolygon(ctx, [
+            [-hw + c, -hh],
+            [hw - c, -hh],
+            [hw, -hh + c],
+            [hw, hh - c],
+            [hw - c, hh],
+            [-hw + c, hh],
+            [-hw, hh - c],
+            [-hw, -hh + c]
+          ]);
+          ctx.globalCompositeOperation = "destination-out";
+          const ci = c * 0.45;
+          fillGlyphPolygon(ctx, [
+            [-hw + sw + ci, -hh + swH],
+            [hw - sw - ci, -hh + swH],
+            [hw - sw, -hh + swH + ci],
+            [hw - sw, hh - swH - ci],
+            [hw - sw - ci, hh - swH],
+            [-hw + sw + ci, hh - swH],
+            [-hw + sw, hh - swH - ci],
+            [-hw + sw, -hh + swH + ci]
+          ]);
+          ctx.globalCompositeOperation = "source-over";
+          ctx.strokeStyle = "#ffffff";
+          ctx.lineWidth = Math.max(2, sw * 0.46);
+          ctx.lineCap = "butt";
+          ctx.beginPath();
+          ctx.moveTo(-hw + sw * 1.38, hh - swH * 1.48);
+          ctx.lineTo(hw - sw * 1.38, -hh + swH * 1.48);
+          ctx.stroke();
+          return;
+        }
+
+        if (glyph === "3") {
+          const midY = -hh * 0.02;
+          fillGlyphPolygon(ctx, [
+            [-hw * 0.92, -hh],
+            [hw - c, -hh],
+            [hw, -hh + c],
+            [hw, -hh + swH],
+            [-hw * 0.92, -hh + swH]
+          ]);
+          fillGlyphPolygon(ctx, [
+            [-hw * 0.92, hh - swH],
+            [hw, hh - swH],
+            [hw, hh - c],
+            [hw - c, hh],
+            [-hw * 0.92, hh]
+          ]);
+          fillGlyphPolygon(ctx, [
+            [hw - sw, -hh + swH - 1],
+            [hw, -hh + c],
+            [hw, midY - c * 0.45],
+            [hw - c * 0.45, midY],
+            [hw - sw, midY]
+          ]);
+          fillGlyphPolygon(ctx, [
+            [hw - sw, midY],
+            [hw - c * 0.45, midY],
+            [hw, midY + c * 0.45],
+            [hw, hh - c],
+            [hw - sw, hh - swH + 1]
+          ]);
+          fillGlyphPolygon(ctx, [
+            [-hw * 0.24, midY - swH * 0.48],
+            [hw - c * 0.35, midY - swH * 0.48],
+            [hw - c * 0.35, midY + swH * 0.48],
+            [-hw * 0.24, midY + swH * 0.48]
+          ]);
+          return;
+        }
+
+        if (glyph === "X") {
+          const cap = sw * 1.15;
+          fillGlyphPolygon(ctx, [
+            [-hw, -hh],
+            [-hw + cap, -hh],
+            [hw, hh],
+            [hw - cap, hh]
+          ]);
+          fillGlyphPolygon(ctx, [
+            [hw - cap, -hh],
+            [hw, -hh],
+            [-hw + cap, hh],
+            [-hw, hh]
+          ]);
+          return;
+        }
+
+        ctx.font = `650 ${Math.round(h / 0.72)}px ui-monospace, monospace`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(glyph, 0, 0);
+      }
+
+      function rasterizeIdentityParticles() {
+        if (!identityContext || !particleMaskContext || !draggableCharacters.length) {
+          return;
+        }
+
+        const headingStyle = getComputedStyle(heading);
+        const fontSize = parseFloat(headingStyle.fontSize) || 72;
+        const cell = width < 760 ? config.mobilePixelSize : config.desktopPixelSize;
+        const pad = Math.ceil(fontSize * 0.28);
+        const shadowShift = cell * 2;
+        let totalParticles = 0;
+
+        for (let charIdx = 0; charIdx < draggableCharacters.length; charIdx += 1) {
+          const character = draggableCharacters[charIdx];
+          const bounds = character.element.getBoundingClientRect();
+          if (bounds.width <= 0 || bounds.height <= 0) {
+            character.particles = [];
+            continue;
+          }
+
+          const glyphW = bounds.width * 0.86;
+          const glyphH = fontSize * 0.66;
+          const canvasW = Math.max(8, Math.ceil(bounds.width + pad * 2));
+          const canvasH = Math.max(8, Math.ceil(Math.max(bounds.height, glyphH) + pad * 2));
+          particleMaskCanvas.width = canvasW;
+          particleMaskCanvas.height = canvasH;
+
+          // Main sculpted Bayer luminance mask
+          particleMaskContext.setTransform(1, 0, 0, 1, 0, 0);
+          particleMaskContext.clearRect(0, 0, canvasW, canvasH);
+          particleMaskContext.translate(canvasW * 0.5, canvasH * 0.5);
+          drawIdentityGlyph(particleMaskContext, character.glyph, glyphW, glyphH);
+
+          particleMaskContext.globalCompositeOperation = "source-in";
+          const grad = particleMaskContext.createLinearGradient(-glyphW * 0.5, -glyphH * 0.5, glyphW * 0.22, glyphH * 0.5);
+          grad.addColorStop(0.0, "rgba(255, 255, 255, 1)");
+          grad.addColorStop(0.44, "rgba(255, 255, 255, 0.96)");
+          grad.addColorStop(0.74, "rgba(255, 255, 255, 0.54)");
+          grad.addColorStop(1.0, "rgba(255, 255, 255, 0.28)");
+          particleMaskContext.fillStyle = grad;
+          particleMaskContext.fillRect(-canvasW * 0.5, -canvasH * 0.5, canvasW, canvasH);
+          particleMaskContext.setTransform(1, 0, 0, 1, 0, 0);
+          particleMaskContext.globalCompositeOperation = "source-over";
+          const mainRgba = particleMaskContext.getImageData(0, 0, canvasW, canvasH).data;
+
+          // Offset architectural Bayer drop-shadow mask
+          particleMaskContext.clearRect(0, 0, canvasW, canvasH);
+          particleMaskContext.translate(canvasW * 0.5 + shadowShift, canvasH * 0.5 + shadowShift);
+          drawIdentityGlyph(particleMaskContext, character.glyph, glyphW, glyphH);
+          particleMaskContext.setTransform(1, 0, 0, 1, 0, 0);
+          particleMaskContext.globalCompositeOperation = "source-over";
+          const shadowRgba = particleMaskContext.getImageData(0, 0, canvasW, canvasH).data;
+
+          const halfW = canvasW * 0.5;
+          const halfH = canvasH * 0.5;
+          const cols = Math.floor(halfW / cell);
+          const rows = Math.floor(halfH / cell);
+          const particles = [];
+
+          for (let gy = -rows; gy <= rows; gy += 1) {
+            const ly = gy * cell;
+            const sy = Math.round(halfH + ly);
+            if (sy < 0 || sy >= canvasH) {
+              continue;
+            }
+            const bayerRow = ((gy % 4) + 4) % 4;
+
+            for (let gx = -cols; gx <= cols; gx += 1) {
+              const lx = gx * cell;
+              const sx = Math.round(halfW + lx);
+              if (sx < 0 || sx >= canvasW) {
+                continue;
+              }
+
+              const idx = (sy * canvasW + sx) * 4 + 3;
+              const mainLum = mainRgba[idx] / 255;
+              const shadowAlpha = shadowRgba[idx] / 255;
+              const bayer = BAYER_4X4[bayerRow * 4 + (((gx % 4) + 4) % 4)];
+              const cellId = (gy + 512) * 2048 + (gx + 512);
+              const rPhase = hashParticle(charIdx + 1, cellId, 91);
+              const rTrail = hashParticle(charIdx + 1, cellId, 137);
+              const rTwinkle = hashParticle(charIdx + 1, cellId, 263);
+
+              if (mainLum >= 0.14) {
+                const rim = ly < -glyphH * 0.34 && mainLum > 0.85;
+                particles.push({
+                  lx,
+                  ly,
+                  dx: 0,
+                  dy: 0,
+                  dvx: 0,
+                  dvy: 0,
+                  lum: mainLum,
+                  bayer,
+                  rim,
+                  shadow: false,
+                  phase: rPhase * Math.PI * 2,
+                  twinkleSpeed: 0.0028 + rTwinkle * 0.0036,
+                  trail: 0.35 + rTrail * 1.05,
+                  u: 0,
+                  v: 0
+                });
+              } else if (shadowAlpha >= 0.45) {
+                particles.push({
+                  lx,
+                  ly,
+                  dx: 0,
+                  dy: 0,
+                  dvx: 0,
+                  dvy: 0,
+                  lum: 0.24,
+                  bayer,
+                  rim: false,
+                  shadow: true,
+                  phase: rPhase * Math.PI * 2,
+                  twinkleSpeed: 0.0024 + rTwinkle * 0.003,
+                  trail: 0.25 + rTrail * 0.7,
+                  u: 0,
+                  v: 0
+                });
+              }
+            }
+          }
+
+          character.particles = particles;
+          character.particleSize = cell;
+          totalParticles += particles.length;
+        }
+
+        let minX = Infinity;
+        let maxX = -Infinity;
+        let minY = Infinity;
+        let maxY = -Infinity;
+        for (const character of draggableCharacters) {
+          for (const p of character.particles || []) {
+            const worldX = character.centerX + p.lx;
+            const worldY = character.centerY + p.ly;
+            if (worldX < minX) minX = worldX;
+            if (worldX > maxX) maxX = worldX;
+            if (worldY < minY) minY = worldY;
+            if (worldY > maxY) maxY = worldY;
+          }
+        }
+        const spanX = Math.max(1, maxX - minX);
+        const spanY = Math.max(1, maxY - minY);
+        const midY = (minY + maxY) * 0.5;
+        for (const character of draggableCharacters) {
+          for (const p of character.particles || []) {
+            p.u = (character.centerX + p.lx - minX) / spanX;
+            p.v = (character.centerY + p.ly - midY) / spanY;
+          }
+        }
+
+        heading.classList.toggle("is-pixel-particles", totalParticles > 0);
+      }
+
       function measureIdentityCharacters() {
         resetIdentityTextTransforms();
 
@@ -1833,6 +2187,8 @@
           character.radiusX = bounds.width * 0.5 * packing;
           character.radiusY = bounds.height * 0.5 * packing;
         }
+
+        rasterizeIdentityParticles();
       }
 
       function resolveCharacterCollisions() {
@@ -1941,8 +2297,8 @@
         let bestDistance = Infinity;
 
         for (const character of draggableCharacters) {
-          const offsetX = character.centerX - scrollX - clientX;
-          const offsetY = character.centerY - scrollY - clientY;
+          const offsetX = character.centerX + character.tx - scrollX - clientX;
+          const offsetY = character.centerY + character.ty - scrollY - clientY;
           const distance = offsetX * offsetX + offsetY * offsetY;
 
           if (distance < bestDistance) {
@@ -1975,8 +2331,141 @@
         resolveCharacterCollisions();
       }
 
+      function computeCharacterTransformMatrix(character) {
+        const cosR = Math.cos(character.rotRad);
+        const sinR = Math.sin(character.rotRad);
+
+        if (character.stretch <= 0.001) {
+          return { mxx: cosR, mxy: -sinR, myx: sinR, myy: cosR };
+        }
+
+        const along = 1 + character.stretch;
+        const across = 1 / (1 + character.stretch * 0.75);
+        const sc = Math.cos(character.stretchAngleRad);
+        const ss = Math.sin(character.stretchAngleRad);
+        const sxx = along * sc * sc + across * ss * ss;
+        const sxy = (along - across) * sc * ss;
+        const syy = along * ss * ss + across * sc * sc;
+
+        return {
+          mxx: sxx * cosR + sxy * sinR,
+          mxy: -sxx * sinR + sxy * cosR,
+          myx: sxy * cosR + syy * sinR,
+          myy: -sxy * sinR + syy * cosR
+        };
+      }
+
+      function evalOrganicWave(coord, time, float) {
+        const p1 = time * float.speed + coord * float.wavelength;
+        const p2 = time * float.speed * 0.618 + coord * float.wavelength * 1.43 + 1.3;
+        const waveY = Math.sin(p1) * 0.72 + Math.sin(p2) * 0.28;
+        const waveX = Math.cos(p1 * 0.85 + 0.6) * 0.65 + Math.sin(p2 * 0.7) * 0.35;
+        return {
+          x: waveX * (float.sway || 0),
+          y: waveY * float.lift,
+          tilt: (Math.cos(p1) * 0.7 + Math.cos(p2) * 0.3) * float.tilt
+        };
+      }
+
+      const shadowParticleQueue = [];
+      const inkParticleQueue = [];
+      const accentParticleQueue = [];
+
+      function evalIdentityScan(time) {
+        const s = config.identity.scan;
+        const since = time - identityScanStart - s.firstDelay;
+        if (since < 0) {
+          return null;
+        }
+        const inCycle = since % s.interval;
+        if (inCycle >= s.duration) {
+          return null;
+        }
+        const progress = inCycle / s.duration;
+        return -s.bandWidth + progress * (1 + 2 * s.bandWidth);
+      }
+
+      function stepIdentityParticles() {
+        if (reducedMotion || !draggableCharacters.length) {
+          return;
+        }
+
+        const scrollX = window.scrollX;
+        const scrollY = window.scrollY;
+        const repelRadius = 40;
+        const repelRadiusSq = repelRadius * repelRadius;
+
+        for (const character of draggableCharacters) {
+          const particles = character.particles;
+          if (!particles || !particles.length) {
+            continue;
+          }
+
+          const cx = character.centerX - scrollX + character.tx;
+          const cy = character.centerY - scrollY + character.ty;
+          const mat = computeCharacterTransformMatrix(character);
+          const trailBaseX = Math.max(-18, Math.min(18, -character.lagVX * 0.55));
+          const trailBaseY = Math.max(-18, Math.min(18, -character.lagVY * 0.55));
+          const pointerNear = pointer.active &&
+            Math.abs(pointer.followX - cx) < character.radiusX * 2 + repelRadius &&
+            Math.abs(pointer.followY - cy) < character.radiusY * 2 + repelRadius;
+
+          for (let i = 0; i < particles.length; i += 1) {
+            const p = particles[i];
+            const targetDx = trailBaseX * p.trail;
+            const targetDy = trailBaseY * p.trail;
+
+            if (pointerNear) {
+              const hx = cx + p.lx * mat.mxx + p.ly * mat.mxy + p.dx;
+              const hy = cy + p.lx * mat.myx + p.ly * mat.myy + p.dy;
+              const diffX = hx - pointer.followX;
+              const diffY = hy - pointer.followY;
+              const distSq = diffX * diffX + diffY * diffY;
+
+              if (distSq < repelRadiusSq && distSq > 0.01) {
+                const dist = Math.sqrt(distSq);
+                const strength = 1 - dist / repelRadius;
+                const force = strength * strength * 2.4;
+                p.dvx += (diffX / dist) * force;
+                p.dvy += (diffY / dist) * force;
+              }
+            }
+
+            if (
+              !pointerNear &&
+              Math.abs(targetDx) < 0.01 &&
+              Math.abs(targetDy) < 0.01 &&
+              Math.abs(p.dx) < 0.02 &&
+              Math.abs(p.dy) < 0.02 &&
+              Math.abs(p.dvx) < 0.02 &&
+              Math.abs(p.dvy) < 0.02
+            ) {
+              p.dx = 0;
+              p.dy = 0;
+              p.dvx = 0;
+              p.dvy = 0;
+              continue;
+            }
+
+            p.dvx = (p.dvx + (targetDx - p.dx) * 0.16) * 0.78;
+            p.dvy = (p.dvy + (targetDy - p.dy) * 0.16) * 0.78;
+            p.dx += p.dvx;
+            p.dy += p.dvy;
+          }
+        }
+      }
+
       function applyIdentityTransforms(time) {
+        const usePixelParticles = heading.classList.contains("is-pixel-particles");
+
         if (reducedMotion) {
+          for (const character of identityCharacters) {
+            character.tx = 0;
+            character.ty = 0;
+            character.rotRad = 0;
+            character.stretch = 0;
+            character.stretchAngleRad = 0;
+          }
           resetIdentityTextTransforms();
           return;
         }
@@ -1990,18 +2479,31 @@
           let stretch = 0;
           let stretchAngle = 0;
 
-          const float = character.float;
-          const phase = time * float.speed + character.centerX * float.wavelength;
-
-          offsetY += Math.sin(phase) * float.lift;
-          rotation += Math.cos(phase) * float.tilt;
-
           if (character.stretches) {
             const chaseSpeed = Math.hypot(character.lagVX, character.lagVY);
             if (chaseSpeed > 0.2) {
               stretch = Math.min(settings.maxStretch, chaseSpeed * settings.stretchPerPixel);
               stretchAngle = Math.atan2(character.lagVY, character.lagVX) * 180 / Math.PI;
             }
+          }
+
+          const wave = evalOrganicWave(character.centerX, time, character.float);
+          offsetX += wave.x;
+          offsetY += wave.y;
+          rotation += wave.tilt;
+
+          character.tx = offsetX;
+          character.ty = offsetY;
+          character.rotRad = rotation * Math.PI / 180;
+          character.stretch = stretch;
+          character.stretchAngleRad = stretchAngle * Math.PI / 180;
+
+          if (character.draggable && usePixelParticles) {
+            if (character.transform !== "") {
+              character.element.style.transform = "";
+              character.transform = "";
+            }
+            continue;
           }
 
           let transform = "";
@@ -2021,6 +2523,116 @@
             character.transform = transform;
           }
         }
+      }
+
+      function drawParticleBatch(queue, fill, alpha, size) {
+        if (!queue.length) {
+          return;
+        }
+        identityContext.fillStyle = fill;
+        identityContext.globalAlpha = alpha;
+        for (let i = 0; i < queue.length; i += 2) {
+          identityContext.fillRect(queue[i], queue[i + 1], size, size);
+        }
+      }
+
+      function paintIdentityParticles(time = performance.now()) {
+        if (!identityContext) {
+          return;
+        }
+
+        identityContext.clearRect(0, 0, width, height);
+        if (!heading.classList.contains("is-pixel-particles")) {
+          return;
+        }
+
+        const scrollX = window.scrollX;
+        const scrollY = window.scrollY;
+        const scanCfg = config.identity.scan;
+        const scanFront = reducedMotion ? null : evalIdentityScan(time);
+
+        for (const character of draggableCharacters) {
+          const particles = character.particles;
+          if (!particles || !particles.length) {
+            continue;
+          }
+
+          const cell = character.particleSize || (width < 760 ? config.mobilePixelSize : config.desktopPixelSize);
+          const solidSize = cell + 0.18;
+          const halfSolid = solidSize * 0.5;
+          const cx = character.centerX - scrollX + character.tx;
+          const cy = character.centerY - scrollY + character.ty;
+
+          identityContext.save();
+          identityContext.translate(cx, cy);
+          if (Math.abs(character.rotRad) > 0.0004) {
+            identityContext.rotate(character.rotRad);
+          }
+          if (character.stretch > 0.001) {
+            const along = 1 + character.stretch;
+            const across = 1 / (1 + character.stretch * 0.75);
+            identityContext.rotate(character.stretchAngleRad);
+            identityContext.scale(along, across);
+            identityContext.rotate(-character.stretchAngleRad);
+          }
+
+          shadowParticleQueue.length = 0;
+          inkParticleQueue.length = 0;
+          accentParticleQueue.length = 0;
+
+          for (let i = 0; i < particles.length; i += 1) {
+            const p = particles[i];
+            const disturbed = p.dx * p.dx + p.dy * p.dy > 4;
+            let lum = p.lum;
+            let crestGlow = 0;
+
+            if (!reducedMotion) {
+              const twinkle = Math.sin(time * p.twinkleSpeed + p.phase);
+              if (!p.rim) {
+                lum += twinkle * 0.085;
+              }
+
+              if (scanFront !== null) {
+                const coord = p.u + p.v * 0.14;
+                const rel = (coord - scanFront) / scanCfg.bandWidth;
+                if (Math.abs(rel) < 1) {
+                  const env = 0.5 * (1 + Math.cos(rel * Math.PI));
+                  const waveMod = -Math.sin(rel * Math.PI) * env;
+                  if (waveMod < 0) {
+                    if (!p.rim) {
+                      lum += waveMod * scanCfg.shimmerDip * 1.45;
+                    }
+                  } else {
+                    lum += waveMod * scanCfg.shimmerBoost * 1.45;
+                    crestGlow = waveMod;
+                  }
+                }
+              }
+            }
+
+            if (!disturbed && lum < p.bayer) {
+              continue;
+            }
+
+            const px = p.lx + p.dx - halfSolid;
+            const py = p.ly + p.dy - halfSolid;
+
+            if (p.shadow && !disturbed) {
+              shadowParticleQueue.push(px, py);
+            } else if (disturbed || (crestGlow > 0.2 && p.lum < 0.92)) {
+              accentParticleQueue.push(px, py);
+            } else {
+              inkParticleQueue.push(px, py);
+            }
+          }
+
+          drawParticleBatch(shadowParticleQueue, identityColors.accent, 0.52, cell);
+          drawParticleBatch(inkParticleQueue, identityColors.ink, 1, solidSize);
+          drawParticleBatch(accentParticleQueue, identityColors.accent, 1, cell);
+          identityContext.restore();
+        }
+
+        identityContext.globalAlpha = 1;
       }
 
       // ---------------------------------------------------------------------------
@@ -2057,6 +2669,12 @@
         canvas.width = Math.max(1, Math.round(width * dpr));
         canvas.height = Math.max(1, Math.round(height * dpr));
 
+        if (identityCanvas && identityContext) {
+          identityCanvas.width = canvas.width;
+          identityCanvas.height = canvas.height;
+          identityContext.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
+
         if (useWebGL && gl) {
           gl.viewport(0, 0, canvas.width, canvas.height);
           const maskScale = width < 760 ? Math.min(dpr, 1.5) : 0.65;
@@ -2080,6 +2698,7 @@
           rasterizeForms();
         }
 
+        readIdentityColors();
         measureIdentityCharacters();
         measureUiSafeZones();
         paint(performance.now());
@@ -2786,6 +3405,7 @@
           paintFallback(time);
         }
         applyIdentityTransforms(time);
+        paintIdentityParticles(time);
       }
 
       function loop(time) {
@@ -2811,6 +3431,7 @@
           stepWater();
           updateDrag();
           stepIdentityPhysics();
+          stepIdentityParticles();
           physicsAccumulator -= PHYSICS_STEP;
         }
 
@@ -2952,7 +3573,12 @@
         resizeFrame = requestAnimationFrame(resize);
       }, { passive: true });
 
-      window.addEventListener("scroll", measureUiSafeZones, { passive: true });
+      window.addEventListener("scroll", () => {
+        measureUiSafeZones();
+        if (reducedMotion) {
+          paintIdentityParticles(performance.now());
+        }
+      }, { passive: true });
 
       document.addEventListener("visibilitychange", () => {
         cancelAnimationFrame(animationFrame);
@@ -2980,6 +3606,7 @@
       themeToggle.setAttribute("aria-label", theme.label);
       document.documentElement.dataset.form = forms[toForm].id;
       wrapIdentityTextCharacters();
+      identityScanStart = performance.now();
       resize();
       dwellUntil = performance.now() + config.dwellDuration;
       document.documentElement.dataset.fish = "idle";

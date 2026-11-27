@@ -854,7 +854,7 @@
           float procPulse = mix(1.0, formPulse, 0.28);
           float discShimmer = (u_reducedMotion > 0.5 ? 0.0 : rippleWave * u_rippleAmp * zone * smoothstep(0.04, 0.3, shapeVal));
 
-          // Rotating horizontal lighthouse beam
+          // Rotating horizontal lighthouse beam (full 360-degree clockwise 3D projection)
           float beam = 0.0;
           float beamShaft = 0.0;
           if (u_beamWeight > 0.005) {
@@ -865,13 +865,13 @@
             float turn = u_reducedMotion > 0.5 ? 0.8 : u_time * 0.62;
             float towardViewer = sin(turn);
             float facing = max(0.0, towardViewer);
-            float sweepAngle = atan(0.22, cos(turn));
+            float sweepAngle = atan(0.22 * towardViewer, cos(turn));
 
             float diff = abs(mod(angle - sweepAngle + 3.14159265, 6.2831853) - 3.14159265);
             float halfW = 0.115 * (1.0 + 0.9 * facing);
             float across = clamp(1.0 - diff / halfW, 0.0, 1.0);
             float radial = pow(clamp(1.0 - dist / u_beamReach, 0.0, 1.0), 1.35);
-            float gain = u_beamWeight * max(0.0, 0.24 + 0.76 * towardViewer) * 1.18;
+            float gain = u_beamWeight * max(0.0, 0.16 + 0.84 * towardViewer) * 1.18;
 
             beamShaft = across * (0.35 + 0.65 * across) * radial * gain;
             float backLobe = across * (0.3 + 0.7 * across) * pow(clamp(1.0 - dist / (u_beamReach * 0.55), 0.0, 1.0), 1.6) * u_beamWeight * max(0.0, -towardViewer) * 0.18;
@@ -2530,9 +2530,9 @@
         const turn = reducedMotion ? 0.8 : time * 0.001 * beamConfig.speed;
         const towardViewer = Math.sin(turn);
         const facing = Math.max(0, towardViewer);
-        const sweepAngle = Math.atan2(beamConfig.tilt, Math.cos(turn));
+        const sweepAngle = Math.atan2(beamConfig.tilt * towardViewer, Math.cos(turn));
         const halfW = beamConfig.halfWidth * (1 + 0.9 * facing);
-        const beamGain = beamWeight * Math.max(0, 0.24 + 0.76 * towardViewer) * beamConfig.gain;
+        const beamGain = beamWeight * Math.max(0, 0.16 + 0.84 * towardViewer) * beamConfig.gain;
         const coreGain = beamWeight * (beamConfig.lampGain + beamConfig.flareGain * facing * facing);
         const horizonY = height * config.water.horizon;
         const timeSec = reducedMotion ? 0 : time * 0.001;
@@ -2594,8 +2594,9 @@
               const across = Math.max(0, 1 - diff / halfW);
               const radial = Math.pow(Math.max(0, 1 - bDist / beamReach), 1.35);
               beamShaft = across * (0.35 + 0.65 * across) * radial * beamGain;
+              const backLobe = across * (0.3 + 0.7 * across) * Math.pow(Math.max(0, 1 - bDist / (beamReach * 0.55)), 1.6) * beamWeight * Math.max(0, -towardViewer) * 0.18;
               const core = Math.pow(Math.max(0, 1 - bDist / coreReach), 1.6) * coreGain;
-              beam = beamShaft + core;
+              beam = beamShaft + backLobe + core;
             }
 
             const simH = waterHeight ? waterHeight[cell] : 0;
